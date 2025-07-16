@@ -1,4 +1,3 @@
-
 import streamlit as st # streamlit lets use python to build app
 from datetime import datetime, timedelta # dates and times for journal entry
 import pandas as pd
@@ -190,37 +189,8 @@ with tab3:
             df.to_csv("food_log.csv", mode="w", header=True, index=False)
         st.success("Your food entries have been saved!")
 
-    # view previous calendar entries 
-    if st.button("View previous food journals"):    # clickable text button
-        st.session_state.show_calendar = True       
-        # preserves memory between reruns so  streamlit remembers what user just 
-        # clicked/the state's session, since script starts over from line 1 when 
-        # user clicks a button and vars return to inital values unless stored in 
-        # st.session_state
-
-
     if st.session_state.get("show_calendar", False): # if calendar view clicked
         st.subheader("Your Food Journal Calendar")
-
-        # # load and display previous entries
-        # if os.path.exists("food_log.csv"):  # food entries are saved here
-        #     df = pd.read_csv("food_log.csv")    # csv file -> dataframe
-        #     # compares date col in csv to datetime objects:
-        #     df['Date'] = pd.to_datetime(df['Date']).dt.date
-        #     # user interface where user chooses date which is then stored:
-        #     selected_date = st.date_input("Select journal date:")
-        #     # filter df so only rows matching date show up: 
-        #     filtered = df[df['Date'] == selected_date]
-
-        #     if not filtered.empty: 
-        #         st.write(f"Entries for {selected_date}:")  
-        #         st.dataframe(filtered) # show table of entries
-        #     else:   # if filtered data empty
-        #         st.info("There are no entries for this date.")
-        # else:   # if csv does not exist:
-        #     st.warning("No food logs found")
-
-
 
 
 # symptom log section
@@ -307,7 +277,7 @@ with tab5:
             # st.dataframe(pattern_df.groupby('Food')['Symptom']['DateTime']['Time Between (hrs)'].apply(lambda x:x).str.cat(sep=" "))
             
             # splitting multiselect symptoms
-            # using .xplode to make new row for each individual symptom
+            # using .explode to make new row for each individual symptom
             pattern_df = pattern_df.assign(Symptom=pattern_df['Symptom'].str.split(', ')).explode('Symptom')
 
             # new column pair in pattern dataframe has food-symptom combos
@@ -328,41 +298,60 @@ with tab5:
                 st.dataframe(pair_details)
                 st.bar_chart(pair_details.set_index('Pair')['Count'])
 
-    #         # display if pattern has shown 2 times
-    #         [frequency_pattern] = pair_counts[pair_counts > 1]
-    #         if not frequency_pattern.empty:
-    #             st.bar_chart(frequency_pattern)
-    #         else: 
-    #             st.info("Not enough data for pattern detection.")
-            
-    #         # shows table of matching pair details
-    #         st.write("Match details:")
-    #         st.dataframe(pattern_df[['Food', 'Symptom', 'DateTime', 
-    #                                 'Time Between (hrs)']])
-    #     else:
-    #         st.info("No obvious patterns found")
+            st.subheader("More Data Insights")
+            # text box, removing spaces and standardizes to lowercase
+            food_selected = st.text_input("Which food do you want to explore?").strip().lower()
+            # sliders for 24 hr clock, initializing from 2-8pm 6 hr window
+            starting_hour = st.slider("Starting Hour (24h)", 0, 23, 14)
+            ending_hour = st.slider("Ending Hour (24h)", 0, 23, 20)
 
-    # else: 
-    #     st.warning("Both food and symptom logs needed for analysis")
+            # converting time col to datetime object, so not seen as a string
+            food_df['Hour'] = pd.to_datetime(food_df['Time'], format="%I:%M %p").dt.hour
+          
+            # filtering by food selected by user, matching food name(s) and time window
+            # accounts for if food is contained in text, i.e: rice in fried rice
+            filtered_foods = food_df[
+                (food_df['Food'].str.lower().str.contains(food_selected)) &
+                (food_df['Hour'] >= starting_hour) &
+                (food_df['Hour'] <= ending_hour)
+            ]
 
+            # merging foods with symptoms logged using inner join based on date
+            filtered_merged = pd.merge(filtered_foods, symptom_df, on='Date', how='inner')
 
+            # want to look at symptoms occuring within a 6 hr window
+            # creating FoodDateTime and SymptomDateTime cols, combining Date and Time_x/y into a single string 
+            # use pd to covert string to datetime obj of date and food eaten time/symptom time
+            filtered_merged['FoodDateTime'] = pd.to_datetime(
+                filtered_merged['Date'] + ' ' + filtered_merged['Time_x'],
+                format='%Y-%m-%d %I:%M %p'
+                )
+            filtered_merged['SymptomDateTime'] = pd.to_datetime(
+                filtered_merged['Date'] + ' ' + filtered_merged['Time_y'], 
+                format='%Y-%m-%d %I:%M %p'
+                )
 
+            # users filter within how many hours post-food they are looking for symptoms
+            # defaults to 6 hrs, but can slide between 1 and 24 
+            time_window = st.number_input(
+                "Select the window of hours after eating to look for symptoms:",
+                min_value=1, max_value=24, value=6, step=1
+            )
 
-    #     # inner joining the dataframes based on same date
-    #     # merged_df = pd.merge(food_df, symptom_df, on='Date', how='inner') 
+            # filters where symptom occurs during/after food is eaten base on user filter
+            filtered_merged = filtered_merged[
+                (filtered_merged['SymptomDateTime'] >= filtered_merged['FoodDateTime']) & 
+                (filtered_merged['SymptomDateTime'] <= filtered_merged['FoodDateTime'] + pd.Timedelta(hours=time_window))
+            ]          
+          
+            if not filtered_merged.empty:
+                st.write(f"Filtered results for '{food_selected}' between {starting_hour}:00 and {ending_hour}:00")
+                st.dataframe(filtered_merged[['Date', 'Food', 'Symptoms', 'Time_x', 'Time_y']])
 
-    #     # if not merged_df.empty:
-    #     #     st.write("Joined Food and Symptom Entries:")
-    #     #     st.dataframe(merged_df)
-
-    #     #     food_counts = merged_df['Food'].value_counts()
-    #     #     st.subheader("Most common foods on symptom days")
-    #     #     st.bar_chart(food_counts)
-    #     #     else:
-    #     #             st.info("no overlapping ")
-    #     # else:
-    #     #     st.warning("Both food and symptom logs needed for analysis")
-
-
-
-
+                # visualization of symptom groupings
+                symptom_groups = filtered_merged['Symptoms'].value_counts()
+                st.bar_chart(symptom_groups)
+            else:
+                st.info("No entries found that match your filter")
+          
+          
