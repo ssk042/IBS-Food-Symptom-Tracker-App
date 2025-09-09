@@ -2,6 +2,8 @@
 
 A web-based application made with Streamlit that allows users to log meals and symptoms, pertaining to gastrointestines, visualize food-symptom correlations, and detect patterns based on time-based analysis.
 
+**Deployment Link:** https://ibs-food-symptom-tracker-app-hz4ebgdyqto9owvcqchree.streamlit.app/
+
 ## Features
 
 - **Articles**: Images and clickable links to reputable IBS-related articles.
